@@ -6,3 +6,4 @@ python-dotenv
 pytest
 websockets
 google-genai
+psutil

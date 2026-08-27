@@ -56,6 +56,20 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
           ...prev, 
           { id: 'err-' + Date.now(), role: 'assistant', content: `[ERROR] ${data.error}`, isStreaming: false }
         ]);
+      } else if (data.type === 'TOOL_STARTED') {
+        setMessages((prev) => [
+          ...prev, 
+          { id: 'tool-' + Date.now(), role: 'assistant', content: `⚡ Executing: ${data.tool}...`, isStreaming: true }
+        ]);
+      } else if (data.type === 'TOOL_COMPLETED') {
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const lastMsg = newMessages[newMessages.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming && lastMsg.content.startsWith('⚡ Executing')) {
+            lastMsg.isStreaming = false;
+          }
+          return newMessages;
+        });
       }
     });
     
