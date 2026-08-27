@@ -27,20 +27,24 @@ class GeminiProvider(AIProvider):
         else:
             self.client = None
 
-    async def generate(self, prompt: str) -> str:
+    async def generate(self, prompt: str, memory_context: str = "") -> str:
         if not self.client:
             raise ValueError('Gemini API key not configured or google-genai not installed.')
         
+        sys_inst = JARVIS_SYSTEM_PROMPT
+        if memory_context:
+            sys_inst += "\n" + memory_context
+
         response = await self.client.aio.models.generate_content(
             model=self.model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=JARVIS_SYSTEM_PROMPT,
+                system_instruction=sys_inst,
             )
         )
         return response.text
 
-    async def stream(self, prompt: str, history: list = None) -> AsyncGenerator[str, None]:
+    async def stream(self, prompt: str, history: list = None, memory_context: str = "") -> AsyncGenerator[str, None]:
         if not self.client:
             raise ValueError('Gemini API key not configured.')
         
@@ -53,12 +57,16 @@ class GeminiProvider(AIProvider):
         
         contents.append(types.Content(role='user', parts=[types.Part.from_text(text=prompt)]))
 
+        sys_inst = JARVIS_SYSTEM_PROMPT
+        if memory_context:
+            sys_inst += "\n" + memory_context
+
         try:
             response_stream = await self.client.aio.models.generate_content_stream(
                 model=self.model_name,
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    system_instruction=JARVIS_SYSTEM_PROMPT,
+                    system_instruction=sys_inst,
                 )
             )
             async for chunk in response_stream:

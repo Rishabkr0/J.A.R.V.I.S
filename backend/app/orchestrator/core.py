@@ -6,6 +6,7 @@ from app.events.models import JarvisEvent, JarvisState
 from app.orchestrator.router import BrainRouter
 from app.orchestrator.fast_router import FastRouter
 from app.memory.session import SessionManager
+from app.memory.retriever import MemoryRetriever
 from app.tools.registry import ToolRegistry
 # Ensure tools are imported so they register
 import app.tools.impl.windows_apps
@@ -13,6 +14,7 @@ import app.tools.impl.windows_url
 import app.tools.impl.windows_volume
 import app.tools.impl.windows_sysinfo
 import app.tools.impl.fs_tools
+import app.tools.impl.memory_tools
 
 logger = logging.getLogger('jarvis.orchestrator')
 
@@ -111,9 +113,14 @@ class Orchestrator:
             'session_id': session.session_id
         })
 
+        # Fetch Contextual Memory
+        memory_context = MemoryRetriever.get_context(message)
+        if memory_context:
+            logger.info("Injected memory context into Gemini prompt.")
+
         full_response = []
         try:
-            async for data in self.router.stream_response(message, session.history):
+            async for data in self.router.stream_response(message, session.history, memory_context):
                 if 'error' in data:
                     raise Exception(data['error'])
                 

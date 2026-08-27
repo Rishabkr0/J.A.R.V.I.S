@@ -10,6 +10,10 @@ class Intent:
     VOLUME_CONTROL = 'set_volume'
     SYS_INFO = 'get_system_info'
     LIST_DIR = 'list_directory'
+    REMEMBER = 'remember_information'
+    FORGET = 'forget_information'
+    RECALL = 'recall_information'
+    CLEAR_MEMORIES = 'clear_all_memories'
 
 class FastRouter:
     """
@@ -31,6 +35,10 @@ class FastRouter:
             (r'^(?:mute|silence)(?: volume)?', Intent.VOLUME_CONTROL),
             (r'^(?:unmute)(?: volume)?', Intent.VOLUME_CONTROL),
             (r'^(?:what is my system info|system info|system specs|get system info)', Intent.SYS_INFO),
+            (r'^remember that (?:my )?(.+?) is (.+)$', Intent.REMEMBER),
+            (r'^forget that (?:my )?(.+?) is (.+)$', Intent.FORGET),
+            (r'^forget everything(?: you remember)?$', Intent.CLEAR_MEMORIES),
+            (r'^(?:what is|what\'s) my (.+?)$', Intent.RECALL),
         ]
 
     def parse(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
@@ -59,6 +67,22 @@ class FastRouter:
                     return intent, {'url': groups[0]}
 
                 if intent == Intent.SYS_INFO:
+                    return intent, {}
+                    
+                if intent == Intent.REMEMBER:
+                    key = groups[0].replace(' ', '_')
+                    val = groups[1]
+                    return intent, {'key': key, 'value': val}
+                    
+                if intent == Intent.FORGET:
+                    key = groups[0].replace(' ', '_')
+                    return intent, {'key': key}
+                    
+                if intent == Intent.RECALL:
+                    key = groups[0].replace(' ', '_')
+                    return intent, {'query': key}
+                    
+                if intent == Intent.CLEAR_MEMORIES:
                     return intent, {}
 
         # 3. Check simple list dir (just for testing phase 2)

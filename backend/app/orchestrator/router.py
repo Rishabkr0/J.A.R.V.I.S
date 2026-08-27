@@ -13,14 +13,14 @@ class BrainRouter:
     def select_provider(self) -> AIProvider:
         return self.gemini_provider
 
-    async def stream_response(self, prompt: str, history: list = None) -> AsyncGenerator[dict, None]:
+    async def stream_response(self, prompt: str, history: list = None, memory_context: str = "") -> AsyncGenerator[dict, None]:
         provider = self.select_provider()
         
         start_time = time.time()
         logger.info('Provider routing started.')
         
         try:
-            stream = provider.stream(prompt, history)
+            stream = provider.stream(prompt, history, memory_context)
             first_token_received = False
             
             async for chunk in stream:

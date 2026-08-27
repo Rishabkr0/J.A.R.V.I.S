@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.ws import router as ws_router, voice_pipeline
+from app.api.memory import router as memory_router
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
@@ -23,6 +24,7 @@ app.add_middleware(
 )
 
 app.include_router(ws_router)
+app.include_router(memory_router)
 
 @app.get('/health')
 async def health_check():
