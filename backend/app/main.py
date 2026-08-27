@@ -2,9 +2,17 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.ws import router as ws_router
+from app.api.ws import router as ws_router, voice_pipeline
 
 app = FastAPI(title=settings.PROJECT_NAME)
+
+@app.on_event("startup")
+async def startup_event():
+    voice_pipeline.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    voice_pipeline.stop()
 
 app.add_middleware(
     CORSMiddleware,

@@ -4,11 +4,13 @@ import logging
 import asyncio
 from app.events.bus import EventBus
 from app.orchestrator.core import Orchestrator
+from app.voice.pipeline import VoicePipeline
 
 logger = logging.getLogger('jarvis.ws')
 router = APIRouter()
 bus = EventBus()
 orchestrator = Orchestrator()
+voice_pipeline = VoicePipeline(orchestrator)
 
 @router.websocket('/ws/jarvis')
 async def websocket_endpoint(websocket: WebSocket):
@@ -39,6 +41,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     message = data.get('message')
                     if message:
                         asyncio.create_task(orchestrator.handle_chat_message(session_id, message))
+                elif data.get('type') == 'toggle_mic':
+                    enabled = data.get('enabled', False)
+                    if enabled:
+                        voice_pipeline.start()
+                        logger.info("Mic enabled via UI")
+                    else:
+                        voice_pipeline.stop()
+                        logger.info("Mic disabled via UI")
             except json.JSONDecodeError:
                 logger.error('Invalid JSON received')
     except WebSocketDisconnect:

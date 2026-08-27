@@ -13,8 +13,9 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
   const [sessionId] = useState('sess-' + Math.random().toString(36).substring(2, 9));
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [jarvisState, setJarvisState] = useState('IDLE');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,7 +29,9 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
     if (!ws) return;
     
     const unsubscribe = ws.subscribe((data) => {
-      if (data.type === 'ai_response_start') {
+      if (data.type === 'state_changed') {
+        setJarvisState(data.state);
+      } else if (data.type === 'ai_response_start') {
         setMessages((prev) => [
           ...prev, 
           { id: 'msg-' + Date.now(), role: 'assistant', content: '', isStreaming: true }
@@ -70,6 +73,12 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
           }
           return newMessages;
         });
+      } else if (data.type === 'chat_message') {
+        // Voice pipeline injects user message here
+        setMessages((prev) => [
+          ...prev, 
+          { id: 'msg-' + Date.now(), role: data.role as 'user'|'assistant', content: data.message }
+        ]);
       }
     });
     
@@ -94,6 +103,16 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
     setInput('');
   };
 
+  const toggleMic = () => {
+    if (!ws) return;
+    const nextState = !isMicOn;
+    setIsMicOn(nextState);
+    ws.send({
+      type: 'toggle_mic',
+      enabled: nextState
+    });
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -103,6 +122,18 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid #333', marginLeft: '1rem', height: '80vh' }}>
+      <div style={{ padding: '0.5rem', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ color: '#00ffcc', fontWeight: 'bold' }}>STATE: {jarvisState}</div>
+        <button 
+          onClick={toggleMic}
+          style={{ 
+            backgroundColor: isMicOn ? '#ff3333' : '#33ff33', 
+            color: '#000', border: 'none', padding: '0.3rem 1rem', fontWeight: 'bold', cursor: 'pointer' 
+          }}
+        >
+          MIC {isMicOn ? 'OFF' : 'ON'}
+        </button>
+      </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
         {messages.map((m) => (
           <div key={m.id} style={{

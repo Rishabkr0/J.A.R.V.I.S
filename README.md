@@ -64,9 +64,10 @@ pytest
 7. Follow up with "Explain a black hole."
 8. Follow up with "What did I just ask you about?" to verify conversation history works.
 
-## Current Capabilities (Phase 2)
+## Current Capabilities (Phase 3)
 - **IMPLEMENTED:** 
   - FastAPI backend, React streaming text chat, Event Bus, WebSocket layer, API Provider abstractions, Gemini streaming integration, session memory.
   - **Fast Command Engine**: Local NLP intent mapping via `FastRouter` for instantaneous action.
   - **Tool Registry**: Deterministic Windows tools (Open Application, Safe URL Launching, Hardware Volume Control, System Information query, Directory Listing).
-- **DEFERRED:** Voice (STT/TTS), Wake Word, Persistent DB, Local ML intent classifiers, 3D HUD, Knowledge Galaxy.
+  - **Real-Time Voice Interface**: Local audio capture, openwakeword activation, INT8 faster-whisper STT, piper-tts sequential synthesis.
+- **DEFERRED:** Persistent DB, Local ML intent classifiers, 3D HUD, Knowledge Galaxy.
