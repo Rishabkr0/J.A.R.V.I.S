@@ -79,16 +79,38 @@ class OpenAppTool(Tool):
                     "error": "EXECUTABLE_NOT_FOUND"
                 }
                 
-            logger.info(f"[6] Windows launch operation started via Popen: {resolved_path}")
-            # DETACHED_PROCESS = 0x00000008, creates a new console and runs detached
-            subprocess.Popen([resolved_path], creationflags=0x00000008, close_fds=True)
+            logger.info(f"[6] Windows launch operation started via os.startfile: {resolved_path}")
+            try:
+                os.startfile(resolved_path)
+            except Exception:
+                subprocess.Popen([resolved_path])
             logger.info("[7] Windows launch operation returned successfully")
             
+            # Register Target Context
+            import asyncio
+            import pywinauto
+            from app.tools.impl.gui_context import GUITargetContext
+            
+            await asyncio.sleep(0.5)
+            try:
+                desktop = pywinauto.Desktop(backend="uia")
+                for w in desktop.windows():
+                    t = w.window_text()
+                    if t and w.is_visible() and normalized_name in t.lower():
+                        GUITargetContext.get_instance().set_target(w.handle, t, exe)
+                        break
+            except Exception as ctx_err:
+                logger.warning(f"Could not automatically register target context for {app_name}: {ctx_err}")
+
             return {
                 "success": True,
                 "tool": self.name,
                 "message": f"Opened {app_name}.",
-                "data": {"executable": exe, "resolved_path": resolved_path},
+                "data": {
+                    "executable": exe,
+                    "resolved_path": resolved_path,
+                    "target_context": GUITargetContext.get_instance().to_dict()
+                },
                 "error": None
             }
         except Exception as e:

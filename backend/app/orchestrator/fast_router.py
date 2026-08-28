@@ -25,7 +25,18 @@ class Intent:
     REFRESH_BROWSER = 'refresh_browser'
     CLOSE_BROWSER = 'close_browser'
     GET_BROWSER_STATUS = 'get_browser_status'
-
+    
+    # Windows GUI Intents
+    LIST_WINDOWS = 'list_windows'
+    FOCUS_WINDOW = 'focus_window'
+    MINIMIZE_WINDOW = 'minimize_window'
+    MAXIMIZE_WINDOW = 'maximize_window'
+    RESTORE_WINDOW = 'restore_window'
+    CLOSE_WINDOW = 'close_window'
+    TYPE_TEXT = 'type_text'
+    PRESS_KEY = 'press_key'
+    MOVE_MOUSE = 'move_mouse'
+    CLICK_MOUSE = 'click_mouse'
 class FastRouter:
     """
     Deterministically routes natural language text to Tool intents without LLM overhead.
@@ -62,6 +73,25 @@ class FastRouter:
             (r'^forget that (?:my )?(.+?) is (.+)$', Intent.FORGET),
             (r'^forget everything(?: you remember)?$', Intent.CLEAR_MEMORIES),
             (r'^(?:what is|what\'s) my (.+?)$', Intent.RECALL),
+            
+            # Windows GUI specifics
+            (r'^(?:list|show)(?: all)? (?:open )?windows$', Intent.LIST_WINDOWS),
+            (r'^(?:focus|switch to|bring) (.+?)(?: to the front)?$', Intent.FOCUS_WINDOW),
+            (r'^minimize (.+)$', Intent.MINIMIZE_WINDOW),
+            (r'^maximize (.+)$', Intent.MAXIMIZE_WINDOW),
+            (r'^restore (.+)$', Intent.RESTORE_WINDOW),
+            (r'^close (.+)$', Intent.CLOSE_WINDOW),
+            
+            # Typing with formatting & target options
+            (r'^type "(.*?)" (?:in|on) (?:the )?(?:next|new) line into (.+)$', Intent.TYPE_TEXT),
+            (r'^type "(.*?)" (?:in|on) (?:the )?(?:next|new) line$', Intent.TYPE_TEXT),
+            (r'^type (.*?) (?:in|on) (?:the )?(?:next|new) line into (.+)$', Intent.TYPE_TEXT),
+            (r'^type (.*?) (?:in|on) (?:the )?(?:next|new) line$', Intent.TYPE_TEXT),
+            (r'^type "(.*?)" into (.+)$', Intent.TYPE_TEXT),
+            (r'^type "(.*?)"$', Intent.TYPE_TEXT),
+            (r'^type (.+?) into (.+)$', Intent.TYPE_TEXT),
+            (r'^type (.+)$', Intent.TYPE_TEXT),
+            (r'^(?:press|hit) (.+)$', Intent.PRESS_KEY),
         ]
 
     def parse(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
@@ -118,6 +148,43 @@ class FastRouter:
                     
                 if intent == Intent.CLEAR_MEMORIES:
                     return intent, {}
+                    
+                # GUI Intents
+                if intent == Intent.LIST_WINDOWS:
+                    return intent, {}
+                if intent in [Intent.FOCUS_WINDOW, Intent.MINIMIZE_WINDOW, Intent.MAXIMIZE_WINDOW, Intent.RESTORE_WINDOW, Intent.CLOSE_WINDOW]:
+                    return intent, {'window_title': groups[0]}
+                if intent == Intent.TYPE_TEXT:
+                    raw_lower = normalized.lower()
+                    has_newline = 'next line' in raw_lower or 'new line' in raw_lower
+                    
+                    text_content = groups[0].strip('\'"')
+                    if len(groups) == 2:
+                        return intent, {'text': text_content, 'target_window': groups[1], 'new_line': has_newline}
+                    return intent, {'text': text_content, 'new_line': has_newline}
+                if intent == Intent.PRESS_KEY:
+                    key_map = {
+                        "enter": "{ENTER}",
+                        "return": "{ENTER}",
+                        "tab": "{TAB}",
+                        "escape": "{ESC}",
+                        "esc": "{ESC}",
+                        "backspace": "{BACKSPACE}",
+                        "space": "{SPACE}",
+                        "up": "{UP}",
+                        "down": "{DOWN}",
+                        "left": "{LEFT}",
+                        "right": "{RIGHT}",
+                        "ctrl s": "^s",
+                        "control s": "^s",
+                        "ctrl c": "^c",
+                        "ctrl v": "^v",
+                        "alt tab": "%{TAB}"
+                    }
+                    key_str = groups[0].lower().strip()
+                    # Map natural language keys to pywinauto codes
+                    mapped = key_map.get(key_str, key_str)
+                    return intent, {'keys': mapped}
 
         # 3. Check simple list dir (just for testing phase 2)
         if normalized.startswith('list files in '):

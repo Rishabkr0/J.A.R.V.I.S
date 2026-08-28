@@ -12,3 +12,4 @@ piper-tts
 openwakeword
 faster-whisper
 sounddevice
+pywinauto
