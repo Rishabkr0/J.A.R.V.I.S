@@ -15,6 +15,7 @@ import app.tools.impl.windows_volume
 import app.tools.impl.windows_sysinfo
 import app.tools.impl.fs_tools
 import app.tools.impl.memory_tools
+import app.tools.impl.browser_tools
 
 logger = logging.getLogger('jarvis.orchestrator')
 
@@ -30,7 +31,21 @@ class Orchestrator:
         event = JarvisEvent(type='state_changed', state=self.state, data=data or {})
         self.bus.publish(event.model_dump())
 
+    def cancel_execution(self):
+        logger.info("Cancelling current execution upon user request...")
+        if hasattr(self, 'current_task') and self.current_task and not self.current_task.done():
+            self.current_task.cancel()
+            logger.info("Active orchestrator task cancelled.")
+        
+        self.bus.publish({
+            'type': 'ai_response_error',
+            'session_id': 'cancelled',
+            'error': 'Execution cancelled by user.'
+        })
+        self.set_state(JarvisState.IDLE)
+
     async def handle_chat_message(self, session_id: str, message: str):
+        self.current_task = asyncio.current_task()
         session = SessionManager.get_or_create(session_id)
         
         request_received_time = time.time()
@@ -78,31 +93,53 @@ class Orchestrator:
                     }
                     tool_latency = 0.0
                 else:
+                    logger.info("[4] tool execution started")
                     tool_start_time = time.time()
-                    result = await tool.execute(**kwargs)
+                    try:
+                        result = await tool.execute(**kwargs)
+                        logger.info(f"[7] tool result generated: {result}")
+                    except Exception as e:
+                        logger.error(f"[ERROR] tool execution failed: {e}", exc_info=True)
+                        result = {
+                            "success": False,
+                            "tool": tool.name,
+                            "message": "Tool execution failed due to an internal error.",
+                            "data": {},
+                            "error": str(e)
+                        }
                     tool_latency = time.time() - tool_start_time
                 
                 total_latency = time.time() - request_received_time
                 
                 logger.info(f"Tool {tool.name} latency: {tool_latency:.4f}s | Total Local Latency: {total_latency:.4f}s")
                 
-                self.bus.publish({
-                    'type': 'TOOL_COMPLETED',
-                    'session_id': session.session_id,
-                    'tool': tool.name,
-                    'success': result['success']
-                })
+                logger.info("[8] TOOL_COMPLETED emitted")
                 
-                session.add_user_message(message)
-                session.add_assistant_message(result['message'])
-                
-                # We reuse ai_response_complete to show the local response instantly
-                self.bus.publish({
-                    'type': 'ai_response_complete',
-                    'session_id': session.session_id,
-                    'message': result['message'],
-                    'is_local': True
-                })
+                if not result['success']:
+                    self.bus.publish({
+                        'type': 'TOOL_ERROR',
+                        'session_id': session.session_id,
+                        'tool': tool.name,
+                        'error': result['message']
+                    })
+                else:
+                    self.bus.publish({
+                        'type': 'TOOL_COMPLETED',
+                        'session_id': session.session_id,
+                        'tool': tool.name,
+                        'success': result['success']
+                    })
+                    
+                    session.add_user_message(message)
+                    session.add_assistant_message(result['message'])
+                    
+                    # We reuse ai_response_complete to show the local response instantly
+                    self.bus.publish({
+                        'type': 'ai_response_complete',
+                        'session_id': session.session_id,
+                        'message': result['message'],
+                        'is_local': True
+                    })
                 
                 self.set_state(JarvisState.IDLE)
                 return

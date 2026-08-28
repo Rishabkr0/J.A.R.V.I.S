@@ -49,6 +49,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     else:
                         voice_pipeline.stop()
                         logger.info("Mic disabled via UI")
+                elif data.get('type') == 'cancel_execution':
+                    orchestrator.cancel_execution()
             except json.JSONDecodeError:
                 logger.error('Invalid JSON received')
     except WebSocketDisconnect:

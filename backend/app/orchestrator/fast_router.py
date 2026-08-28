@@ -1,6 +1,7 @@
 import re
 import logging
 from typing import Tuple, Dict, Any, Optional
+from app.voice.normalization import TranscriptNormalizer
 
 logger = logging.getLogger('jarvis.fast_router')
 
@@ -14,6 +15,16 @@ class Intent:
     FORGET = 'forget_information'
     RECALL = 'recall_information'
     CLEAR_MEMORIES = 'clear_all_memories'
+    
+    # Browser Intents
+    OPEN_BROWSER = 'open_browser'
+    NAVIGATE_BROWSER = 'navigate_browser'
+    SEARCH_BROWSER = 'search_browser'
+    GO_BACK = 'go_back'
+    GO_FORWARD = 'go_forward'
+    REFRESH_BROWSER = 'refresh_browser'
+    CLOSE_BROWSER = 'close_browser'
+    GET_BROWSER_STATUS = 'get_browser_status'
 
 class FastRouter:
     """
@@ -22,8 +33,20 @@ class FastRouter:
     """
     
     def __init__(self):
+        self.normalizer = TranscriptNormalizer()
         # Extremely lightweight regex mapping
         self.rules = [
+            # Browser specifics (Must be before open_app to intercept chrome)
+            (r'^(?:open|launch|start) (?:chrome|browser)$', Intent.OPEN_BROWSER),
+            (r'^(?:go to|navigate to) (.+)$', Intent.NAVIGATE_BROWSER),
+            (r'^(?:search google for) (.+)$', Intent.SEARCH_BROWSER),
+            (r'^(?:search|google|look up) (.+)$', Intent.SEARCH_BROWSER),
+            (r'^go back$', Intent.GO_BACK),
+            (r'^go forward$', Intent.GO_FORWARD),
+            (r'^refresh(?: the page)?$', Intent.REFRESH_BROWSER),
+            (r'^close (?:chrome|browser)$', Intent.CLOSE_BROWSER),
+            (r'^(?:is the )?browser (?:open|status|ready)\??$', Intent.GET_BROWSER_STATUS),
+            
             (r'^(?:open|launch|start) (chrome|edge|notepad|calculator|terminal|explorer|cmd)$', Intent.OPEN_APP),
             (r'^(?:can you )?(?:open|launch) (?:chrome|edge|notepad|calculator|terminal|explorer|cmd)$', Intent.OPEN_APP),
             (r'^(?:go to|open url) (.+\.[a-z]+)$', Intent.OPEN_URL),
@@ -42,7 +65,8 @@ class FastRouter:
         ]
 
     def parse(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
-        normalized = text.lower().strip().rstrip('.?!')
+        normalized = self.normalizer.normalize(text)
+        logger.info(f"FastRouter raw: '{text}' -> normalized: '{normalized}'")
         
         # 1. Check Volume
         if 'volume up' in normalized or 'increase volume' in normalized or 'raise volume' in normalized:
@@ -58,6 +82,16 @@ class FastRouter:
             match = re.search(pattern, normalized)
             if match:
                 groups = match.groups()
+                
+                # Browser intents
+                if intent == Intent.OPEN_BROWSER:
+                    return intent, {}
+                if intent == Intent.NAVIGATE_BROWSER:
+                    return intent, {'url': groups[0]}
+                if intent == Intent.SEARCH_BROWSER:
+                    return intent, {'query': groups[0]}
+                if intent in [Intent.GO_BACK, Intent.GO_FORWARD, Intent.REFRESH_BROWSER, Intent.CLOSE_BROWSER, Intent.GET_BROWSER_STATUS]:
+                    return intent, {}
                 
                 if intent == Intent.OPEN_APP:
                     app_name = groups[0] if groups else normalized.split()[-1]

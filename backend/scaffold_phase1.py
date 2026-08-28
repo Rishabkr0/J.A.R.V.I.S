@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LOG_LEVEL: str = 'INFO'
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = 'gemini-2.5-flash'
+    GEMINI_MODEL: str = 'gemini-3.6-flash'
     MAX_CONVERSATION_MESSAGES: int = 20
 
     class Config:
@@ -26,7 +26,7 @@ PORT=8000
 HOST=0.0.0.0
 LOG_LEVEL=INFO
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 MAX_CONVERSATION_MESSAGES=20
 ''',
     'app/providers/gemini.py': '''from typing import Any, AsyncGenerator

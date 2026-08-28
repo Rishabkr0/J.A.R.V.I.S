@@ -25,7 +25,7 @@ PORT=8000
 HOST=0.0.0.0
 LOG_LEVEL=INFO
 GEMINI_API_KEY=your_actual_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 MAX_CONVERSATION_MESSAGES=20
 ```
 > **SECURITY WARNING:** Never commit `.env` or share your API key. The `.gitignore` prevents checking this file in.

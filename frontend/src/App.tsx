@@ -6,14 +6,21 @@ import { JarvisWebSocket } from './services/websocket';
 function App() {
   const [ws, setWs] = useState<JarvisWebSocket | null>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'memory'>('chat');
+  const [browserStatus, setBrowserStatus] = useState<string>('OFFLINE');
 
   useEffect(() => {
     const socket = new JarvisWebSocket(() => {});
+    const unsubscribe = socket.subscribe((data) => {
+      if (data.type === 'browser_status') {
+        setBrowserStatus(data.status);
+      }
+    });
     socket.connect();
     setWs(socket);
 
     return () => {
-      // Cleanup placeholder
+      unsubscribe();
+      socket.disconnect();
     };
   }, []);
 
@@ -40,7 +47,10 @@ function App() {
         </div>
         <div style={{ color: '#444', fontSize: '0.8rem' }}>
           System: Online<br/>
-          Core: Operational
+          Core: Operational<br/>
+          <span style={{ color: browserStatus === 'OFFLINE' ? '#ff3333' : (browserStatus === 'ERROR' ? '#ffaa00' : '#00ffcc') }}>
+            Browser: {browserStatus}
+          </span>
         </div>
       </div>
       

@@ -9,12 +9,12 @@ class Settings(BaseSettings):
     
     # Provider Settings
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     
     # Voice Settings
     VOICE_ENABLED: bool = True
     WAKE_WORD_ENABLED: bool = True
-    STT_MODEL: str = "tiny.en"
+    STT_MODEL: str = "base.en"
     STT_DEVICE: str = "cpu"
     STT_COMPUTE_TYPE: str = "int8"
     TTS_ENABLED: bool = True

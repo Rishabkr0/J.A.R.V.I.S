@@ -1,4 +1,3 @@
-
 type Callback = (data: any) => void;
 
 export class JarvisWebSocket {
@@ -42,6 +41,14 @@ export class JarvisWebSocket {
   send(message: any) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
+    }
+  }
+
+  disconnect() {
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
     }
   }
 }

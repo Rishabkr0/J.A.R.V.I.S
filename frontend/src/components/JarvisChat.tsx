@@ -16,6 +16,13 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
   const [sessionId] = useState('sess-' + Math.random().toString(36).substring(2, 9));
   const [isMicOn, setIsMicOn] = useState(true);
   const [jarvisState, setJarvisState] = useState('IDLE');
+  const [voiceDebug, setVoiceDebug] = useState<{
+    raw_stt: string;
+    normalized_stt: string;
+    intent: string;
+    stt_latency: number;
+    utterance_duration: number;
+  } | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -49,7 +56,10 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
         setMessages((prev) => {
           const newMessages = [...prev];
           const lastMsg = newMessages[newMessages.length - 1];
-          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
+          if (lastMsg && lastMsg.role === 'assistant') {
+            if (data.message) {
+              lastMsg.content = data.message;
+            }
             lastMsg.isStreaming = false;
           }
           return newMessages;
@@ -64,12 +74,15 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
           ...prev, 
           { id: 'tool-' + Date.now(), role: 'assistant', content: `⚡ Executing: ${data.tool}...`, isStreaming: true }
         ]);
-      } else if (data.type === 'TOOL_COMPLETED') {
+      } else if (data.type === 'TOOL_COMPLETED' || data.type === 'TOOL_ERROR') {
         setMessages((prev) => {
           const newMessages = [...prev];
           const lastMsg = newMessages[newMessages.length - 1];
           if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming && lastMsg.content.startsWith('⚡ Executing')) {
             lastMsg.isStreaming = false;
+            if (data.type === 'TOOL_ERROR') {
+              lastMsg.content = `[ERROR] Tool failed: ${data.error || 'Unknown error'}`;
+            }
           }
           return newMessages;
         });
@@ -79,6 +92,14 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
           ...prev, 
           { id: 'msg-' + Date.now(), role: data.role as 'user'|'assistant', content: data.message }
         ]);
+      } else if (data.type === 'voice_debug') {
+        setVoiceDebug({
+          raw_stt: data.raw_stt,
+          normalized_stt: data.normalized_stt,
+          intent: data.intent,
+          stt_latency: data.stt_latency,
+          utterance_duration: data.utterance_duration
+        });
       }
     });
     
@@ -113,6 +134,13 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
     });
   };
 
+  const handleStop = () => {
+    if (!ws) return;
+    ws.send({
+      type: 'cancel_execution'
+    });
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -124,16 +152,38 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid #333', marginLeft: '1rem', height: '80vh' }}>
       <div style={{ padding: '0.5rem', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: '#00ffcc', fontWeight: 'bold' }}>STATE: {jarvisState}</div>
-        <button 
-          onClick={toggleMic}
-          style={{ 
-            backgroundColor: isMicOn ? '#ff3333' : '#33ff33', 
-            color: '#000', border: 'none', padding: '0.3rem 1rem', fontWeight: 'bold', cursor: 'pointer' 
-          }}
-        >
-          MIC {isMicOn ? 'OFF' : 'ON'}
-        </button>
+        <div>
+          {jarvisState !== 'IDLE' && (
+            <button 
+              onClick={handleStop}
+              style={{ 
+                backgroundColor: '#ffaa00', 
+                color: '#000', border: 'none', padding: '0.3rem 1rem', fontWeight: 'bold', cursor: 'pointer', marginRight: '0.5rem' 
+              }}
+            >
+              STOP
+            </button>
+          )}
+          <button 
+            onClick={toggleMic}
+            style={{ 
+              backgroundColor: isMicOn ? '#ff3333' : '#33ff33', 
+              color: '#000', border: 'none', padding: '0.3rem 1rem', fontWeight: 'bold', cursor: 'pointer' 
+            }}
+          >
+            MIC {isMicOn ? 'OFF' : 'ON'}
+          </button>
+        </div>
       </div>
+      {voiceDebug && (
+        <div style={{ backgroundColor: '#111827', borderBottom: '1px solid #374151', padding: '0.4rem 0.8rem', fontSize: '0.75rem', fontFamily: 'monospace', color: '#9ca3af', display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+          <div><span style={{ color: '#6b7280' }}>RAW STT:</span> <span style={{ color: '#f3f4f6' }}>"{voiceDebug.raw_stt}"</span></div>
+          <div><span style={{ color: '#6b7280' }}>NORM:</span> <span style={{ color: '#3b82f6' }}>"{voiceDebug.normalized_stt}"</span></div>
+          <div><span style={{ color: '#6b7280' }}>INTENT:</span> <span style={{ color: '#10b981' }}>{voiceDebug.intent}</span></div>
+          <div><span style={{ color: '#6b7280' }}>STT TIME:</span> <span style={{ color: '#f59e0b' }}>{voiceDebug.stt_latency}s</span></div>
+          <div><span style={{ color: '#6b7280' }}>DUR:</span> <span style={{ color: '#8b5cf6' }}>{voiceDebug.utterance_duration}s</span></div>
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
         {messages.map((m) => (
           <div key={m.id} style={{
