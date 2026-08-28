@@ -31,11 +31,16 @@ class STT:
             # Convert bytes to float32 numpy array normalized to [-1.0, 1.0] for whisper
             audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
             
+            # Peak normalize audio to 0.95 to prevent quiet mic inputs from causing Whisper phonetic errors
+            max_val = np.max(np.abs(audio_np))
+            if max_val > 0.01:
+                audio_np = audio_np * (0.95 / max_val)
+            
             # Optimize transcription parameters for local command accuracy:
             # - vad_filter=True: strips leading/trailing non-speech noise with Silero VAD
             # - condition_on_previous_text=False: prevents repetitive phrase loops ("open open chrome")
             # - initial_prompt: primes Whisper beam search vocabulary towards local commands
-            initial_prompt = "JARVIS voice command: Open Chrome, Open Notepad, Search Google for, Go to YouTube, Refresh, Go back."
+            initial_prompt = "JARVIS voice commands: What window is active? Which window is active? What application is active? Read my screen. What's on my screen? Take a screenshot. Open Chrome. Open Notepad. Go to YouTube. Refresh. Go back. Close browser."
             segments, info = self.model.transcribe(
                 audio_np,
                 language="en",

@@ -17,6 +17,7 @@ import app.tools.impl.windows_sysinfo
 import app.tools.impl.fs_tools
 import app.tools.impl.memory_tools
 import app.tools.impl.browser_tools
+import app.tools.impl.screen
 
 from app.voice.tts import TTS
 
@@ -49,29 +50,45 @@ class Orchestrator:
         self.set_state(JarvisState.IDLE)
 
     async def _emit_voice_audio_if_needed(self, session_id: str, is_voice: bool, text: str):
-        is_voice_session = is_voice or session_id.startswith("voice")
-        if is_voice_session and text and text.strip():
-            logger.info(f"Synthesizing voice audio for response: '{text[:40]}...'")
-            audio_b64, duration_sec = await self.tts.speak(text)
-            if audio_b64:
-                self.set_state(JarvisState.SPEAKING)
-                self.bus.publish({
-                    'type': 'audio_response',
-                    'session_id': session_id,
-                    'audio': audio_b64,
-                    'duration': duration_sec
-                })
-                
-                # Duration lock reset task (acts as safety backup if WebSocket playback events are delayed)
-                async def _reset_speaking_state(duration: float):
-                    await asyncio.sleep(duration + 0.8)
-                    if self.state == JarvisState.SPEAKING:
-                        logger.info("Duration lock timeout reached. Returning state to IDLE.")
-                        self.set_state(JarvisState.IDLE)
-                        
-                asyncio.create_task(_reset_speaking_state(duration_sec))
-            else:
-                logger.warning("TTS audio generation returned empty payload.")
+        # Speak if TTS is enabled in config or explicitly requested
+        from app.core.config import settings
+        should_speak = settings.TTS_ENABLED and text and text.strip()
+        
+        if should_speak:
+            # Clean/truncate text for voice synthesis if response is long or contains structured data
+            speak_text = text
+            if len(speak_text) > 250:
+                # Find first sentence or line break
+                first_line = speak_text.split('\n')[0]
+                if len(first_line) > 10 and len(first_line) < 200:
+                    speak_text = first_line + ". Full details shown on screen."
+                else:
+                    speak_text = speak_text[:200] + "... Full details on screen."
+                    
+            logger.info(f"Synthesizing voice audio for response: '{speak_text[:40]}...'")
+            try:
+                audio_b64, duration_sec = await self.tts.speak(speak_text)
+                if audio_b64:
+                    self.set_state(JarvisState.SPEAKING)
+                    self.bus.publish({
+                        'type': 'audio_response',
+                        'session_id': session_id,
+                        'audio': audio_b64,
+                        'duration': duration_sec
+                    })
+                    
+                    # Duration lock reset task (acts as safety backup if WebSocket playback events are delayed)
+                    async def _reset_speaking_state(duration: float):
+                        await asyncio.sleep(duration + 0.8)
+                        if self.state == JarvisState.SPEAKING:
+                            logger.info("Duration lock timeout reached. Returning state to IDLE.")
+                            self.set_state(JarvisState.IDLE)
+                            
+                    asyncio.create_task(_reset_speaking_state(duration_sec))
+                else:
+                    logger.warning("TTS audio generation returned empty payload.")
+            except Exception as tts_err:
+                logger.error(f"TTS Synthesis error: {tts_err}")
 
     async def handle_chat_message(self, session_id: str, message: str, is_voice: bool = False):
         self.current_task = asyncio.current_task()
@@ -152,7 +169,13 @@ class Orchestrator:
                     
             final_message = "\n".join(combined_messages) if combined_messages else "Commands processed."
             session.add_user_message(message)
-            session.add_assistant_message(final_message)
+            
+            # Sanitize session history if a screen tool was invoked (Privacy lock)
+            screen_tools = ["capture_screen", "get_active_window", "get_screen_state", "get_visible_text"]
+            if any(intent[0] in screen_tools for intent in local_intents):
+                session.add_assistant_message("[Screen data retrieved and sent to UI, but redacted from memory for privacy]")
+            else:
+                session.add_assistant_message(final_message)
             
             self.bus.publish({
                 'type': 'ai_response_complete',

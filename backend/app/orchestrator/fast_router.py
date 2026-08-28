@@ -37,6 +37,13 @@ class Intent:
     PRESS_KEY = 'press_key'
     MOVE_MOUSE = 'move_mouse'
     CLICK_MOUSE = 'click_mouse'
+    
+    # Screen Intents
+    GET_SCREEN_STATE = 'get_screen_state'
+    GET_ACTIVE_WINDOW = 'get_active_window'
+    GET_VISIBLE_TEXT = 'get_visible_text'
+    CAPTURE_SCREEN = 'capture_screen'
+
 class FastRouter:
     """
     Deterministically routes natural language text to Tool intents without LLM overhead.
@@ -92,6 +99,12 @@ class FastRouter:
             (r'^type (.+?) into (.+)$', Intent.TYPE_TEXT),
             (r'^type (.+)$', Intent.TYPE_TEXT),
             (r'^(?:press|hit) (.+)$', Intent.PRESS_KEY),
+            
+            # Screen Intents
+            (r'^(?:what|which) (?:window|windows|application|app) is active\??$', Intent.GET_ACTIVE_WINDOW),
+            (r'^(?:what is|what\'s|whats) on (?:my|the) screen\??$', Intent.GET_SCREEN_STATE),
+            (r'^(?:read|show)(?: my| the)? screen$', Intent.GET_VISIBLE_TEXT),
+            (r'^(?:take a |capture )?screenshot$', Intent.CAPTURE_SCREEN),
         ]
 
     def parse(self, text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
@@ -188,6 +201,12 @@ class FastRouter:
                     # Map natural language keys to pywinauto codes
                     mapped = key_map.get(key_str, key_str)
                     return intent, {'keys': mapped}
+                    
+                # Screen Intents
+                if intent in [Intent.GET_SCREEN_STATE, Intent.GET_ACTIVE_WINDOW, Intent.GET_VISIBLE_TEXT]:
+                    return intent, {}
+                if intent == Intent.CAPTURE_SCREEN:
+                    return intent, {"save": True}
 
         # 3. Check simple list dir (just for testing phase 2)
         if normalized.startswith('list files in '):

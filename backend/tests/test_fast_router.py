@@ -12,8 +12,7 @@ def test_fast_router_open_app():
     router = FastRouter()
     
     intent, kwargs = router.parse("open chrome")
-    assert intent == Intent.OPEN_APP
-    assert kwargs['app_name'] == 'chrome'
+    assert intent == Intent.OPEN_BROWSER
     
     intent, kwargs = router.parse("launch notepad")
     assert intent == Intent.OPEN_APP

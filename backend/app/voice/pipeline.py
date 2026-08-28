@@ -108,8 +108,8 @@ class VoicePipeline:
                         logger.info("WAKE WORD DETECTED")
                         self.state = "LISTENING"
                         self.audio_buffer.clear()
-                        # Keep only last 4 chunks (~320ms cushion) to avoid feeding the wake-word ("hey jarvis") into Whisper
-                        cushion_chunks = list(self.preroll_buffer)[-4:]
+                        # Keep last 12 chunks (~960ms cushion) so start of utterances ("what...", "which...") are never clipped
+                        cushion_chunks = list(self.preroll_buffer)[-12:]
                         for c in cushion_chunks:
                             self.audio_buffer.extend(c)
                         self.silence_start = None
