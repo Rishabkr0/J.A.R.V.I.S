@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Voice Settings
     VOICE_ENABLED: bool = True
     WAKE_WORD_ENABLED: bool = True
+    WAKEWORD_THRESHOLD: float = 0.25
     STT_MODEL: str = "base.en"
     STT_DEVICE: str = "cpu"
     STT_COMPUTE_TYPE: str = "int8"

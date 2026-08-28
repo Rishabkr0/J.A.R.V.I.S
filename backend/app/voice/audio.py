@@ -41,10 +41,20 @@ class AudioCapture:
 
     def stop(self):
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception as e:
+                logger.error(f"Error closing audio stream: {e}")
+            self.stream = None
         self.is_running = False
-        logger.info("Microphone stopped.")
+        # Empty queue
+        while not self.queue.empty():
+            try:
+                self.queue.get_nowait()
+            except queue.Empty:
+                break
+        logger.info("Microphone stopped and audio queue flushed.")
 
     def get_chunk(self, block=False, timeout=None):
         try:

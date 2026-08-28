@@ -39,6 +39,14 @@ class VoicePipeline:
             logger.info("Voice is disabled in config.")
             return
             
+        if self.is_running and self.task and not self.task.done():
+            logger.info("Voice Pipeline is already running.")
+            return
+
+        self.audio_buffer.clear()
+        self.preroll_buffer.clear()
+        self.state = "IDLE"
+
         self.audio.start()
         if not self.audio.is_running:
             logger.error("Microphone failed to start. Stopping voice pipeline.")
@@ -57,9 +65,13 @@ class VoicePipeline:
     def stop(self):
         self.is_running = False
         self.audio.stop()
-        if self.task:
+        if self.task and not self.task.done():
             self.task.cancel()
-        logger.info("Voice Pipeline stopped.")
+        self.task = None
+        self.audio_buffer.clear()
+        self.preroll_buffer.clear()
+        self.state = "IDLE"
+        logger.info("Voice Pipeline stopped cleanly.")
 
     async def _run_loop(self):
         while self.is_running:
@@ -69,6 +81,25 @@ class VoicePipeline:
                 if not chunk:
                     await asyncio.sleep(0.01)
                     continue
+
+                # Self-listening suppression check:
+                # If system is speaking, thinking, or executing, discard microphone audio to prevent feedback loop
+                orchestrator_state = self.orchestrator.state
+                if orchestrator_state in (JarvisState.SPEAKING, JarvisState.THINKING, JarvisState.EXECUTING) or self.tts.is_speaking:
+                    self.audio_buffer.clear()
+                    self.preroll_buffer.clear()
+                    self.speaking_end_time = time.time()
+                    await asyncio.sleep(0.01)
+                    continue
+
+                # Echo cushion: wait 0.8s after speech completes before listening again
+                if hasattr(self, 'speaking_end_time'):
+                    if time.time() - self.speaking_end_time < 0.8:
+                        self.preroll_buffer.clear()
+                        await asyncio.sleep(0.01)
+                        continue
+                    else:
+                        delattr(self, 'speaking_end_time')
 
                 if self.state == "IDLE":
                     self.preroll_buffer.append(chunk)
@@ -190,7 +221,7 @@ class VoicePipeline:
             'utterance_duration': round(utterance_duration, 2)
         })
         
-        # 2. Route via Orchestrator
-        await self.orchestrator.handle_chat_message(session_id, text)
+        # 2. Route via Orchestrator (Voice Mode)
+        await self.orchestrator.handle_chat_message(session_id, text, is_voice=True)
         self.state = "IDLE"
 

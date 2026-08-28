@@ -119,7 +119,10 @@ class FastRouter:
                 if intent == Intent.NAVIGATE_BROWSER:
                     return intent, {'url': groups[0]}
                 if intent == Intent.SEARCH_BROWSER:
-                    return intent, {'query': groups[0]}
+                    query = groups[0]
+                    if query.lower().startswith('for '):
+                        query = query[4:].strip()
+                    return intent, {'query': query}
                 if intent in [Intent.GO_BACK, Intent.GO_FORWARD, Intent.REFRESH_BROWSER, Intent.CLOSE_BROWSER, Intent.GET_BROWSER_STATUS]:
                     return intent, {}
                 
@@ -192,3 +195,26 @@ class FastRouter:
             return Intent.LIST_DIR, {'path': path}
 
         return None
+
+    def parse_compound(self, text: str) -> Optional[List[Tuple[str, Dict[str, Any]]]]:
+        """
+        Parses compound sentences connected by 'and', 'then', or 'and then'.
+        Returns a list of (intent_name, kwargs) tuples, or None if unroutable.
+        """
+        parts = [p.strip() for p in re.split(r'\b(?:and then|and|then)\b', text, flags=re.IGNORECASE) if p.strip()]
+        
+        if len(parts) <= 1:
+            res = self.parse(text)
+            return [res] if res else None
+            
+        intents = []
+        for part in parts:
+            res = self.parse(part)
+            if res:
+                intents.append(res)
+            else:
+                # If any part of a compound command cannot be routed deterministically, fallback to Gemini
+                logger.info(f"Compound part '{part}' could not be routed locally. Falling back to Gemini.")
+                return None
+                
+        return intents if intents else None

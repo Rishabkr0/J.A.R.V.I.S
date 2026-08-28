@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 from openwakeword.model import Model
+from app.core.config import settings
 
 logger = logging.getLogger("jarvis.voice.wakeword")
 
@@ -13,7 +14,8 @@ class WakeWordDetector:
                 wakeword_models=["hey_jarvis"]
             )
             self.target_word = "hey_jarvis"
-            logger.info(f"WakeWordDetector loaded successfully. Target: '{self.target_word}' (Models: {list(self.model.models.keys())})")
+            self.threshold = settings.WAKEWORD_THRESHOLD
+            logger.info(f"WakeWordDetector loaded successfully. Target: '{self.target_word}', Sensitivity Threshold: {self.threshold}")
         except Exception as e:
             logger.error(f"Failed to load WakeWordDetector: {e}")
             self.model = None
@@ -31,7 +33,7 @@ class WakeWordDetector:
         for name, score in prediction.items():
             if self._chunk_count % 20 == 0:
                 logger.debug(f"WakeWord Score ({name}): {score:.3f}")
-            if score > 0.4:  # Sensitivity threshold for 'hey_jarvis'
-                logger.info(f"WAKE WORD DETECTED ({name}) with score: {score:.3f}")
+            if score >= self.threshold:  # Sensitivity threshold for 'hey_jarvis'
+                logger.info(f"WAKE WORD DETECTED ({name}) with score: {score:.3f} (Threshold: {self.threshold})")
                 return True
         return False

@@ -18,6 +18,8 @@ import app.tools.impl.fs_tools
 import app.tools.impl.memory_tools
 import app.tools.impl.browser_tools
 
+from app.voice.tts import TTS
+
 logger = logging.getLogger('jarvis.orchestrator')
 
 class Orchestrator:
@@ -25,6 +27,7 @@ class Orchestrator:
         self.bus = EventBus()
         self.router = BrainRouter()
         self.fast_router = FastRouter()
+        self.tts = TTS()
         self.state = JarvisState.IDLE
 
     def set_state(self, new_state: JarvisState, data: dict = None):
@@ -45,27 +48,54 @@ class Orchestrator:
         })
         self.set_state(JarvisState.IDLE)
 
-    async def handle_chat_message(self, session_id: str, message: str):
+    async def _emit_voice_audio_if_needed(self, session_id: str, is_voice: bool, text: str):
+        is_voice_session = is_voice or session_id.startswith("voice")
+        if is_voice_session and text and text.strip():
+            logger.info(f"Synthesizing voice audio for response: '{text[:40]}...'")
+            audio_b64, duration_sec = await self.tts.speak(text)
+            if audio_b64:
+                self.set_state(JarvisState.SPEAKING)
+                self.bus.publish({
+                    'type': 'audio_response',
+                    'session_id': session_id,
+                    'audio': audio_b64,
+                    'duration': duration_sec
+                })
+                
+                # Duration lock reset task (acts as safety backup if WebSocket playback events are delayed)
+                async def _reset_speaking_state(duration: float):
+                    await asyncio.sleep(duration + 0.8)
+                    if self.state == JarvisState.SPEAKING:
+                        logger.info("Duration lock timeout reached. Returning state to IDLE.")
+                        self.set_state(JarvisState.IDLE)
+                        
+                asyncio.create_task(_reset_speaking_state(duration_sec))
+            else:
+                logger.warning("TTS audio generation returned empty payload.")
+
+    async def handle_chat_message(self, session_id: str, message: str, is_voice: bool = False):
         self.current_task = asyncio.current_task()
         session = SessionManager.get_or_create(session_id)
         
         request_received_time = time.time()
         self.set_state(JarvisState.THINKING)
         
-        # 1. Fast Router Pass
+        # 1. Fast Router Pass (supports compound sentences)
         router_start_time = time.time()
-        local_intent = self.fast_router.parse(message)
+        local_intents = self.fast_router.parse_compound(message)
         router_latency = time.time() - router_start_time
         logger.info(f"FastRouter latency: {router_latency:.4f}s")
         
-        if local_intent:
-            intent_name, kwargs = local_intent
-            tool = ToolRegistry.get_tool(intent_name)
+        if local_intents:
+            self.set_state(JarvisState.EXECUTING)
+            combined_messages = []
+            overall_success = True
             
-            if tool:
-                # Local tool execution path
-                self.set_state(JarvisState.EXECUTING)
-                
+            for intent_name, kwargs in local_intents:
+                tool = ToolRegistry.get_tool(intent_name)
+                if not tool:
+                    continue
+                    
                 self.bus.publish({
                     'type': 'TOOL_STARTED',
                     'session_id': session.session_id,
@@ -74,10 +104,8 @@ class Orchestrator:
                 
                 from app.security.permissions import PermissionLevel
                 
-                # Verify Permissions (Item 6 of Audit)
                 if tool.permission_level == PermissionLevel.CONFIRMATION_REQUIRED:
-                    logger.warning(f"Tool {tool.name} requires confirmation. Auto-approving because it was explicitly requested via FastRouter (Direct User Command).")
-                    # Proceed to execute
+                    logger.warning(f"Tool {tool.name} requires confirmation. Auto-approving because it was explicitly requested via FastRouter.")
                     pass
                 
                 if tool.permission_level == PermissionLevel.BLOCKED:
@@ -88,13 +116,10 @@ class Orchestrator:
                         "data": {},
                         "error": "BLOCKED"
                     }
-                    tool_latency = 0.0
                 else:
-                    logger.info("[4] tool execution started")
                     tool_start_time = time.time()
                     try:
                         result = await tool.execute(**kwargs)
-                        logger.info(f"[7] tool result generated: {result}")
                     except Exception as e:
                         logger.error(f"[ERROR] tool execution failed: {e}", exc_info=True)
                         result = {
@@ -105,41 +130,40 @@ class Orchestrator:
                             "error": str(e)
                         }
                     tool_latency = time.time() - tool_start_time
-                
-                total_latency = time.time() - request_received_time
-                
-                logger.info(f"Tool {tool.name} latency: {tool_latency:.4f}s | Total Local Latency: {total_latency:.4f}s")
-                
-                logger.info("[8] TOOL_COMPLETED emitted")
-                
+                    logger.info(f"Tool {tool.name} latency: {tool_latency:.4f}s")
+
                 if not result['success']:
+                    overall_success = False
                     self.bus.publish({
                         'type': 'TOOL_ERROR',
                         'session_id': session.session_id,
                         'tool': tool.name,
                         'error': result['message']
                     })
+                    combined_messages.append(f"[{tool.name} Error: {result['message']}]")
                 else:
                     self.bus.publish({
                         'type': 'TOOL_COMPLETED',
                         'session_id': session.session_id,
                         'tool': tool.name,
-                        'success': result['success']
+                        'success': True
                     })
+                    combined_messages.append(result['message'])
                     
-                    session.add_user_message(message)
-                    session.add_assistant_message(result['message'])
-                    
-                    # We reuse ai_response_complete to show the local response instantly
-                    self.bus.publish({
-                        'type': 'ai_response_complete',
-                        'session_id': session.session_id,
-                        'message': result['message'],
-                        'is_local': True
-                    })
-                
-                self.set_state(JarvisState.IDLE)
-                return
+            final_message = "\n".join(combined_messages) if combined_messages else "Commands processed."
+            session.add_user_message(message)
+            session.add_assistant_message(final_message)
+            
+            self.bus.publish({
+                'type': 'ai_response_complete',
+                'session_id': session.session_id,
+                'message': final_message,
+                'is_local': True
+            })
+            await self._emit_voice_audio_if_needed(session.session_id, is_voice, final_message)
+            
+            self.set_state(JarvisState.IDLE)
+            return
 
         # 2. Gemini Fallback Path
         self.bus.publish({
@@ -176,6 +200,7 @@ class Orchestrator:
                 'message': completed_text,
                 'is_local': False
             })
+            await self._emit_voice_audio_if_needed(session.session_id, is_voice, completed_text)
             self.set_state(JarvisState.IDLE)
             
         except Exception as e:

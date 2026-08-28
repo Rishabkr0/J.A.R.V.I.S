@@ -100,6 +100,33 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
           stt_latency: data.stt_latency,
           utterance_duration: data.utterance_duration
         });
+      } else if (data.type === 'audio_response' && data.audio) {
+        try {
+          setJarvisState('SPEAKING');
+          ws.send({ type: 'audio_playback_started' });
+          const audioSrc = `data:audio/wav;base64,${data.audio}`;
+          const audio = new Audio(audioSrc);
+          
+          const handleEnded = () => {
+            setJarvisState('IDLE');
+            ws.send({ type: 'audio_playback_ended' });
+          };
+
+          audio.onended = handleEnded;
+          audio.onerror = (e) => {
+            console.error('Audio playback error:', e);
+            handleEnded();
+          };
+          
+          audio.play().catch((err) => {
+            console.warn('Autoplay prevented or playback error:', err);
+            handleEnded();
+          });
+        } catch (e) {
+          console.error('Failed to handle audio response:', e);
+          setJarvisState('IDLE');
+          ws.send({ type: 'audio_playback_ended' });
+        }
       }
     });
     
@@ -126,6 +153,15 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
 
   const toggleMic = () => {
     if (!ws) return;
+    // Unlock Audio Context for browser autoplay policy
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        ctx.resume();
+      }
+    } catch (_) {}
+
     const nextState = !isMicOn;
     setIsMicOn(nextState);
     ws.send({
@@ -167,11 +203,11 @@ export const JarvisChat = ({ ws }: { ws: JarvisWebSocket | null }) => {
           <button 
             onClick={toggleMic}
             style={{ 
-              backgroundColor: isMicOn ? '#ff3333' : '#33ff33', 
+              backgroundColor: isMicOn ? '#33ff33' : '#ff3333', 
               color: '#000', border: 'none', padding: '0.3rem 1rem', fontWeight: 'bold', cursor: 'pointer' 
             }}
           >
-            MIC {isMicOn ? 'OFF' : 'ON'}
+            MIC: {isMicOn ? 'ACTIVE' : 'MUTED'}
           </button>
         </div>
       </div>

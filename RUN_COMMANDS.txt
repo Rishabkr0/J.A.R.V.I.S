@@ -1,0 +1,19 @@
+=====================================================
+J.A.R.V.I.S - BACKEND & FRONTEND RUN COMMANDS
+=====================================================
+
+1. BACKEND RUN COMMAND (PowerShell):
+   cd backend; .\venv\Scripts\activate; uvicorn app.main:app --reload
+
+   Or if already inside the backend directory:
+   .\venv\Scripts\activate; uvicorn app.main:app --reload
+
+-----------------------------------------------------
+
+2. FRONTEND RUN COMMAND (PowerShell or CMD):
+   cd frontend; npm run dev
+
+   Or if already inside the frontend directory:
+   npm run dev
+
+=====================================================
